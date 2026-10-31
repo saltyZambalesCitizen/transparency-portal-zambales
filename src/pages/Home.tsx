@@ -8,6 +8,7 @@ import { PageHead } from '../components/Chrome';
 import OfficesSection from '../components/OfficesSection';
 import { projectsCsv, downloadText } from '../lib/csv';
 import { count, php, phpDelta, plural } from '../lib/format';
+import { indexPlaces, NOT_STATED } from '../lib/places';
 import { usePortal } from '../lib/portal-context';
 import { summarise, type ScopedProject, type ScopeResult, type Summary } from '../lib/scope';
 import { useTitle } from '../lib/use-title';
@@ -21,6 +22,15 @@ const SORTS: Record<Sort, { label: string; cmp: (a: ScopedProject, b: ScopedProj
   change: { label: 'Size of change', cmp: (a, b) => Math.abs(b.delta_php ?? 0) - Math.abs(a.delta_php ?? 0) },
   title: { label: 'Name', cmp: (a, b) => a.title.localeCompare(b.title) },
 };
+
+// Whether the filters are shown; a per-browser convenience, so storage may fail.
+const FILTERS_OPEN_KEY = 'portal.filters-open';
+function readFiltersOpen(): boolean {
+  try { return localStorage.getItem(FILTERS_OPEN_KEY) !== 'false'; } catch { return true; }
+}
+function saveFiltersOpen(open: boolean) {
+  try { localStorage.setItem(FILTERS_OPEN_KEY, String(open)); } catch { /* not stored */ }
+}
 
 export default function Home() {
   const { scope, overview, config } = usePortal();
@@ -75,8 +85,12 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
   const status = (params.get('status') ?? '') as BridgeGroup | '';
   const why = params.get('why') ?? '';
   const office = params.get('office') ?? '';
+  const town = params.get('town') ?? '';
+  const brgy = town ? params.get('brgy') ?? '' : '';
   const sort = (params.get('sort') as Sort) in SORTS ? (params.get('sort') as Sort) : 'house';
   const [shown, setShown] = useState(PAGE);
+  const [filtersOpen, setFiltersOpen] = useState(readFiltersOpen);
+  const activeFilters = [q, program, status, why, office, town, brgy].filter(Boolean).length;
 
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -93,6 +107,26 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
     return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'en', { numeric: true }));
   }, [all]);
 
+  // Towns and barangays as the titles name them ("Barangay Porac, Botolan, Zambales").
+  // Read against the province's name, so only a province portal has them.
+  const places = useMemo(() => {
+    if (config.kind !== 'province') return null;
+    const index = indexPlaces(all.map((p) => p.title), shortNameOf(config));
+    return { ...index, byRow: new Map(all.map((p) => [p, index.of(p.title)] as const)) };
+  }, [all, config]);
+  const [townOption, townBarangays] = useMemo(() => {
+    const t = places?.towns.find((o) => o.value === town);
+    return [t, (t && places?.barangays.get(town)) || []] as const;
+  }, [places, town]);
+  const setTown = (value: string) => {
+    const next = new URLSearchParams(params);
+    if (value) next.set('town', value);
+    else next.delete('town');
+    next.delete('brgy'); // a barangay belongs to its town
+    setParams(next, { replace: true });
+    setShown(PAGE);
+  };
+
   const reasons = useMemo(() => {
     const seen = new Map<string, string>();
     for (const p of all) for (const r of p.reasons) seen.set(`${r.kind}:${r.label}`, r.kind === 'office' ? `Office: ${shortOffice(r.label)}` : `Title names ${r.label}`);
@@ -106,6 +140,16 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
       if (status && p.bridge_group !== status) return false;
       if (why && !p.reasons.some((r) => `${r.kind}:${r.label}` === why)) return false;
       if (office && p.office !== office) return false;
+      if (places && town) {
+        const named = places.byRow.get(p) ?? [];
+        if (town === NOT_STATED) {
+          if (named.length) return false;
+        } else {
+          const here = named.find((n) => n.town === town);
+          if (!here) return false;
+          if (brgy === NOT_STATED ? here.barangays.length > 0 : brgy && !here.barangays.includes(brgy)) return false;
+        }
+      }
       if (words.length) {
         const hay = [p.title, p.program, p.pap, p.office, p.region].join(' ').toLowerCase();
         if (!words.every((w) => hay.includes(w))) return false;
@@ -113,7 +157,7 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
       return true;
     });
     return rows.sort((a, b) => SORTS[sort].cmp(a, b) || a.title.localeCompare(b.title));
-  }, [all, q, program, status, why, office, sort]);
+  }, [all, q, program, status, why, office, places, town, brgy, sort]);
   const filteredSummary = useMemo(() => summarise(filtered), [filtered]);
   const narrowed = filtered.length !== all.length;
 
@@ -167,7 +211,20 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
           </button>
         </div>
 
-        <div className="toolbar">
+        <div className="filters-head">
+          <span className="label">Filters{activeFilters ? ` · ${activeFilters} active` : ''}</span>
+          <button
+            type="button"
+            className="link-button"
+            aria-expanded={filtersOpen}
+            aria-controls="project-filters"
+            onClick={() => { setFiltersOpen(!filtersOpen); saveFiltersOpen(!filtersOpen); }}
+          >
+            {filtersOpen ? 'Hide filters' : 'Show filters'}
+          </button>
+        </div>
+
+        <div className="toolbar" id="project-filters" hidden={!filtersOpen}>
           <label className="field field-grow">
             <span className="label">Search</span>
             <input type="search" value={q} placeholder="Barangay, road, school, office…" onChange={(e) => setParam('q', e.target.value)} />
@@ -207,6 +264,31 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
                 {reasons.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
               </select>
             </label>
+          )}
+          {places && places.towns.length > 0 && (
+            <>
+              <label className="field">
+                <span className="label">Municipality</span>
+                <select value={town} onChange={(e) => setTown(e.target.value)}>
+                  <option value="">Any municipality</option>
+                  {places.towns.map((t) => <option key={t.value} value={t.value}>{t.name} ({count(t.rows)})</option>)}
+                  <option value={NOT_STATED}>Not stated in title ({count(places.unnamed)})</option>
+                </select>
+              </label>
+              <label className="field">
+                <span className="label">Barangay</span>
+                <select
+                  value={brgy}
+                  disabled={!town || town === NOT_STATED}
+                  title={!town ? 'Choose a municipality first' : undefined}
+                  onChange={(e) => setParam('brgy', e.target.value)}
+                >
+                  <option value="">{town && town !== NOT_STATED ? 'Any barangay' : 'Choose a municipality first'}</option>
+                  {townBarangays.map((b) => <option key={b.value} value={b.value}>{b.name} ({count(b.rows)})</option>)}
+                  {townOption?.unnamed ? <option value={NOT_STATED}>Not stated in title ({count(townOption.unnamed)})</option> : null}
+                </select>
+              </label>
+            </>
           )}
           <label className="field">
             <span className="label">Sort by</span>

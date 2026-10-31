@@ -192,7 +192,11 @@
 
 /* ---------- List toolbar ---------- */
 .list-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.filters-head { display: flex; align-items: baseline; gap: 12px; margin: 6px 0 8px; }
+.filters-head .link-button { font-size: 13px; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin: 4px 0 14px; }
+.toolbar[hidden] { display: none; }
+.field select:disabled { color: var(--ink-3); background: var(--paper-2); cursor: not-allowed; }
 .field { display: flex; flex-direction: column; gap: 5px; min-width: 120px; }
 .field-grow { flex: 1 1 200px; }
 .field input, .field select {
