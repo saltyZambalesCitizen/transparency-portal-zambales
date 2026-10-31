@@ -90,7 +90,8 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
   const sort = (params.get('sort') as Sort) in SORTS ? (params.get('sort') as Sort) : 'house';
   const [shown, setShown] = useState(PAGE);
   const [filtersOpen, setFiltersOpen] = useState(readFiltersOpen);
-  const activeFilters = [q, program, status, why, office, town, brgy].filter(Boolean).length;
+  // The collapsible row's filters, counted so a hidden one is not forgotten.
+  const moreActive = [why, town, brgy].filter(Boolean).length;
 
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -211,20 +212,7 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
           </button>
         </div>
 
-        <div className="filters-head">
-          <span className="label">Filters{activeFilters ? ` · ${activeFilters} active` : ''}</span>
-          <button
-            type="button"
-            className="link-button"
-            aria-expanded={filtersOpen}
-            aria-controls="project-filters"
-            onClick={() => { setFiltersOpen(!filtersOpen); saveFiltersOpen(!filtersOpen); }}
-          >
-            {filtersOpen ? 'Hide filters' : 'Show filters'}
-          </button>
-        </div>
-
-        <div className="toolbar" id="project-filters" hidden={!filtersOpen}>
+        <div className="toolbar">
           <label className="field field-grow">
             <span className="label">Search</span>
             <input type="search" value={q} placeholder="Barangay, road, school, office…" onChange={(e) => setParam('q', e.target.value)} />
@@ -256,6 +244,22 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
               </select>
             </label>
           )}
+        </div>
+
+        <div className="filters-head">
+          <span className="label">More filters{moreActive ? ` · ${moreActive} active` : ''}</span>
+          <button
+            type="button"
+            className="link-button"
+            aria-expanded={filtersOpen}
+            aria-controls="more-filters"
+            onClick={() => { setFiltersOpen(!filtersOpen); saveFiltersOpen(!filtersOpen); }}
+          >
+            {filtersOpen ? 'Hide' : 'Show'}
+          </button>
+        </div>
+
+        <div className="toolbar" id="more-filters" hidden={!filtersOpen}>
           {reasons.length > 1 && (
             <label className="field">
               <span className="label">Listed because</span>
@@ -290,6 +294,9 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
               </label>
             </>
           )}
+        </div>
+
+        <div className="toolbar">
           <label className="field">
             <span className="label">Sort by</span>
             <select value={sort} onChange={(e) => setParam('sort', e.target.value === 'house' ? '' : e.target.value)}>
