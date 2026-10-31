@@ -83,7 +83,6 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
   const q = params.get('q') ?? '';
   const program = (params.get('program') ?? '') as DatasetKey | '';
   const status = (params.get('status') ?? '') as BridgeGroup | '';
-  const why = params.get('why') ?? '';
   const office = params.get('office') ?? '';
   const town = params.get('town') ?? '';
   const brgy = town ? params.get('brgy') ?? '' : '';
@@ -91,7 +90,7 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
   const [shown, setShown] = useState(PAGE);
   const [filtersOpen, setFiltersOpen] = useState(readFiltersOpen);
   // The collapsible row's filters, counted so a hidden one is not forgotten.
-  const moreActive = [why, town, brgy].filter(Boolean).length;
+  const moreActive = [town, brgy].filter(Boolean).length;
 
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -128,18 +127,12 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
     setShown(PAGE);
   };
 
-  const reasons = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const p of all) for (const r of p.reasons) seen.set(`${r.kind}:${r.label}`, r.kind === 'office' ? `Office: ${shortOffice(r.label)}` : `Title names ${r.label}`);
-    return [...seen.entries()];
-  }, [all]);
 
   const filtered = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     const rows = all.filter((p) => {
       if (program && p.dataset !== program) return false;
       if (status && p.bridge_group !== status) return false;
-      if (why && !p.reasons.some((r) => `${r.kind}:${r.label}` === why)) return false;
       if (office && p.office !== office) return false;
       if (places && town) {
         const named = places.byRow.get(p) ?? [];
@@ -158,7 +151,7 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
       return true;
     });
     return rows.sort((a, b) => SORTS[sort].cmp(a, b) || a.title.localeCompare(b.title));
-  }, [all, q, program, status, why, office, places, town, brgy, sort]);
+  }, [all, q, program, status, office, places, town, brgy, sort]);
   const filteredSummary = useMemo(() => summarise(filtered), [filtered]);
   const narrowed = filtered.length !== all.length;
 
@@ -260,15 +253,6 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
         </div>
 
         <div className="toolbar" id="more-filters" hidden={!filtersOpen}>
-          {reasons.length > 1 && (
-            <label className="field">
-              <span className="label">Listed because</span>
-              <select value={why} onChange={(e) => setParam('why', e.target.value)}>
-                <option value="">Any reason</option>
-                {reasons.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-              </select>
-            </label>
-          )}
           {places && places.towns.length > 0 && (
             <>
               <label className="field">
