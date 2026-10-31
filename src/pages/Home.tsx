@@ -391,13 +391,14 @@ function Stats({ summary, programName }: { summary: Summary; programName: (k: Da
 function ProjectTable({ rows, programName }: { rows: ScopedProject[]; programName: (k: DatasetKey) => string }) {
   if (!rows.length) return null;
   return (
-    <div className="table" role="table" aria-label="Projects">
+    <div className="table table-projects" role="table" aria-label="Projects">
       <div className="tr th" role="row">
         <span role="columnheader">Project</span>
         <span role="columnheader">Status</span>
         <span role="columnheader" className="r">NEP</span>
         <span role="columnheader" className="r">House bill</span>
         <span role="columnheader" className="r">Change</span>
+        <span role="columnheader" className="r">Map</span>
       </div>
       {rows.map((p) => (
         <div className="tr" role="row" key={p.key}>
@@ -415,6 +416,20 @@ function ProjectTable({ rows, programName }: { rows: ScopedProject[]; programNam
           <span role="cell" className="r num strong" data-label="House bill">{php(p.house_php)}</span>
           <span role="cell" className={`r num delta ${(p.delta_php ?? 0) > 0 ? 'up' : (p.delta_php ?? 0) < 0 ? 'down' : ''}`} data-label="Change">
             {phpDelta(p.delta_php)}
+          </span>
+          <span role="cell" className="r td-map" data-label="Map">
+            {p.lat != null && p.lon != null ? (
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={`Open ${p.lat}, ${p.lon} in Google Maps`}
+              >
+                Map ↗
+              </a>
+            ) : (
+              <span className="muted" title="No coordinates in the data">—</span>
+            )}
           </span>
         </div>
       ))}
