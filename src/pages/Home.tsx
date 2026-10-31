@@ -3,12 +3,13 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import type { BridgeGroup, DatasetInfo, Disclaimer, GroupInfo } from '../api/types';
 import { BRIDGE_GROUPS } from '../api/types';
 import { shortNameOf, type DatasetKey } from '../config';
-import { Await, Disclaimers, ReasonTags, StatusChip } from '../components/Bits';
+import { Await, Disclaimers, MapLink, ReasonTags, StatusChip } from '../components/Bits';
 import { PageHead } from '../components/Chrome';
 import OfficesSection from '../components/OfficesSection';
 import { projectsCsv, downloadText } from '../lib/csv';
 import { count, php, phpDelta, plural } from '../lib/format';
-import { indexPlaces, NOT_STATED } from '../lib/places';
+import PlaceFilters from '../components/PlaceFilters';
+import { inPlace, placesOf } from '../lib/places';
 import { usePortal } from '../lib/portal-context';
 import { summarise, type ScopedProject, type ScopeResult, type Summary } from '../lib/scope';
 import { useTitle } from '../lib/use-title';
@@ -22,15 +23,6 @@ const SORTS: Record<Sort, { label: string; cmp: (a: ScopedProject, b: ScopedProj
   change: { label: 'Size of change', cmp: (a, b) => Math.abs(b.delta_php ?? 0) - Math.abs(a.delta_php ?? 0) },
   title: { label: 'Name', cmp: (a, b) => a.title.localeCompare(b.title) },
 };
-
-// Whether the filters are shown; a per-browser convenience, so storage may fail.
-const FILTERS_OPEN_KEY = 'portal.filters-open';
-function readFiltersOpen(): boolean {
-  try { return localStorage.getItem(FILTERS_OPEN_KEY) !== 'false'; } catch { return true; }
-}
-function saveFiltersOpen(open: boolean) {
-  try { localStorage.setItem(FILTERS_OPEN_KEY, String(open)); } catch { /* not stored */ }
-}
 
 export default function Home() {
   const { scope, overview, config } = usePortal();
@@ -88,9 +80,6 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
   const brgy = town ? params.get('brgy') ?? '' : '';
   const sort = (params.get('sort') as Sort) in SORTS ? (params.get('sort') as Sort) : 'house';
   const [shown, setShown] = useState(PAGE);
-  const [filtersOpen, setFiltersOpen] = useState(readFiltersOpen);
-  // The collapsible row's filters, counted so a hidden one is not forgotten.
-  const moreActive = [town, brgy].filter(Boolean).length;
 
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -109,15 +98,7 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
 
   // Towns and barangays as the titles name them ("Barangay Porac, Botolan, Zambales").
   // Read against the province's name, so only a province portal has them.
-  const places = useMemo(() => {
-    if (config.kind !== 'province') return null;
-    const index = indexPlaces(all.map((p) => p.title), shortNameOf(config));
-    return { ...index, byRow: new Map(all.map((p) => [p, index.of(p.title)] as const)) };
-  }, [all, config]);
-  const [townOption, townBarangays] = useMemo(() => {
-    const t = places?.towns.find((o) => o.value === town);
-    return [t, (t && places?.barangays.get(town)) || []] as const;
-  }, [places, town]);
+  const places = useMemo(() => placesOf(all, (p) => p.title, config), [all, config]);
   const setTown = (value: string) => {
     const next = new URLSearchParams(params);
     if (value) next.set('town', value);
@@ -127,23 +108,13 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
     setShown(PAGE);
   };
 
-
   const filtered = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     const rows = all.filter((p) => {
       if (program && p.dataset !== program) return false;
       if (status && p.bridge_group !== status) return false;
       if (office && p.office !== office) return false;
-      if (places && town) {
-        const named = places.byRow.get(p) ?? [];
-        if (town === NOT_STATED) {
-          if (named.length) return false;
-        } else {
-          const here = named.find((n) => n.town === town);
-          if (!here) return false;
-          if (brgy === NOT_STATED ? here.barangays.length > 0 : brgy && !here.barangays.includes(brgy)) return false;
-        }
-      }
+      if (places && !inPlace(places.byRow.get(p) ?? [], town, brgy)) return false;
       if (words.length) {
         const hay = [p.title, p.program, p.pap, p.office, p.region].join(' ').toLowerCase();
         if (!words.every((w) => hay.includes(w))) return false;
@@ -239,46 +210,7 @@ function Projects({ scope, datasets }: { scope: ScopeResult; datasets: DatasetIn
           )}
         </div>
 
-        <div className="filters-head">
-          <span className="label">More filters{moreActive ? ` · ${moreActive} active` : ''}</span>
-          <button
-            type="button"
-            className="link-button"
-            aria-expanded={filtersOpen}
-            aria-controls="more-filters"
-            onClick={() => { setFiltersOpen(!filtersOpen); saveFiltersOpen(!filtersOpen); }}
-          >
-            {filtersOpen ? 'Hide' : 'Show'}
-          </button>
-        </div>
-
-        <div className="toolbar" id="more-filters" hidden={!filtersOpen}>
-          {places && places.towns.length > 0 && (
-            <>
-              <label className="field">
-                <span className="label">Municipality</span>
-                <select value={town} onChange={(e) => setTown(e.target.value)}>
-                  <option value="">Any municipality</option>
-                  {places.towns.map((t) => <option key={t.value} value={t.value}>{t.name} ({count(t.rows)})</option>)}
-                  <option value={NOT_STATED}>Not stated in title ({count(places.unnamed)})</option>
-                </select>
-              </label>
-              <label className="field">
-                <span className="label">Barangay</span>
-                <select
-                  value={brgy}
-                  disabled={!town || town === NOT_STATED}
-                  title={!town ? 'Choose a municipality first' : undefined}
-                  onChange={(e) => setParam('brgy', e.target.value)}
-                >
-                  <option value="">{town && town !== NOT_STATED ? 'Any barangay' : 'Choose a municipality first'}</option>
-                  {townBarangays.map((b) => <option key={b.value} value={b.value}>{b.name} ({count(b.rows)})</option>)}
-                  {townOption?.unnamed ? <option value={NOT_STATED}>Not stated in title ({count(townOption.unnamed)})</option> : null}
-                </select>
-              </label>
-            </>
-          )}
-        </div>
+        <PlaceFilters places={places} town={town} brgy={brgy} onTown={setTown} onBarangay={(v) => setParam('brgy', v)} />
 
         <div className="toolbar">
           <label className="field">
@@ -418,18 +350,7 @@ function ProjectTable({ rows, programName }: { rows: ScopedProject[]; programNam
             {phpDelta(p.delta_php)}
           </span>
           <span role="cell" className="r td-map" data-label="Map">
-            {p.lat != null && p.lon != null ? (
-              <a
-                href={`https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={`Open ${p.lat}, ${p.lon} in Google Maps`}
-              >
-                Map ↗
-              </a>
-            ) : (
-              <span className="muted" title="No coordinates in the data">—</span>
-            )}
+            <MapLink point={p.lat != null && p.lon != null ? { lat: p.lat, lon: p.lon } : null} source="from the API" />
           </span>
         </div>
       ))}

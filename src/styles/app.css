@@ -355,7 +355,7 @@
 .yv { font-family: var(--font-hero); font-weight: 700; font-size: 18px; }
 .ysub { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); }
 
-.gtable .tr { grid-template-columns: minmax(0, 1fr) repeat(7, 84px); gap: 10px; }
+.gtable .tr { grid-template-columns: minmax(0, 1fr) repeat(7, 84px) 56px; gap: 10px; }
 .gname { font-weight: 500; line-height: 1.4; }
 .gcell { font-size: 13px; }
 .gcell.none { color: var(--rule); }

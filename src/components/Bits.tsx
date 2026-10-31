@@ -3,6 +3,7 @@ import type { BridgeGroup, Disclaimer } from '../api/types';
 import type { Async } from '../lib/portal-context';
 import { usePortal } from '../lib/portal-context';
 import type { Reason } from '../lib/scope';
+import { mapUrl, type Point } from '../lib/links';
 
 /** The plain status, as the API words it, with the group's colour. */
 export function StatusChip({ group, label, held }: { group: BridgeGroup; label: string; held?: boolean }) {
@@ -79,6 +80,16 @@ export function External({ href, children }: { href: string; children: ReactNode
   return (
     <a href={href} target="_blank" rel="noopener">
       {children} <span aria-hidden="true">↗</span>
+    </a>
+  );
+}
+
+/** "Map ↗" to the point in Google Maps, or a dash when there is none. */
+export function MapLink({ point, source }: { point: Point | null; source: string }) {
+  if (!point) return <span className="muted" title="No coordinates">—</span>;
+  return (
+    <a href={mapUrl(point.lat, point.lon)} target="_blank" rel="noopener noreferrer" title={`${point.lat}, ${point.lon} (${source}), in Google Maps`}>
+      Map ↗
     </a>
   );
 }

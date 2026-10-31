@@ -10,8 +10,11 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import type { DistrictCard, DistrictOffice, Envelope } from '../api/types';
 import { GAA_YEARS } from '../api/types';
 import { shortNameOf } from '../config';
-import { Await, Disclaimers, External } from '../components/Bits';
+import { Await, Disclaimers, External, MapLink } from '../components/Bits';
 import { PageHead } from '../components/Chrome';
+import PlaceFilters from '../components/PlaceFilters';
+import { pointInText } from '../lib/links';
+import { inPlace, placesOf } from '../lib/places';
 import { downloadText } from '../lib/csv';
 import { count, php, phpFull, plural } from '../lib/format';
 import { departmentShort, gaaCsv, gaaYearTotals, hasYear, loadGaa, type GaaResult, type GaaRow } from '../lib/gaa';
@@ -197,11 +200,24 @@ function Programs({ result, placeList }: { result: GaaResult; placeList: string 
   const dept = params.get('dept') ?? '';
   const yearParam = Number(params.get('year'));
   const year = (GAA_YEARS as readonly number[]).includes(yearParam) ? yearParam : null;
+  const town = params.get('town') ?? '';
+  const brgy = town ? params.get('brgy') ?? '' : '';
   const [shown, setShown] = useState(PAGE);
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value);
     else next.delete(key);
+    setParams(next, { replace: true });
+    setShown(PAGE);
+  };
+
+  // Towns and barangays as the names spell them ("Barangay Amungan, Iba, Zambales").
+  const places = useMemo(() => placesOf(all, (r) => r.name, config), [all, config]);
+  const setTown = (value: string) => {
+    const next = new URLSearchParams(params);
+    if (value) next.set('town', value);
+    else next.delete('town');
+    next.delete('brgy'); // a barangay belongs to its town
     setParams(next, { replace: true });
     setShown(PAGE);
   };
@@ -222,6 +238,7 @@ function Programs({ result, placeList }: { result: GaaResult; placeList: string 
     const rows = all.filter((r) => {
       if (dept && r.department_id !== dept) return false;
       if (y && !hasYear(r, y)) return false;
+      if (places && !inPlace(places.byRow.get(r) ?? [], town, brgy)) return false;
       if (words.length) {
         const hay = `${r.name} ${r.department}`.toLowerCase();
         if (!words.every((w) => hay.includes(w))) return false;
@@ -229,7 +246,7 @@ function Programs({ result, placeList }: { result: GaaResult; placeList: string 
       return true;
     });
     return y ? [...rows].sort((a, b) => (b.years[y]?.amount ?? 0) - (a.years[y]?.amount ?? 0)) : rows;
-  }, [all, q, dept, year]);
+  }, [all, q, dept, year, places, town, brgy]);
   const narrowed = filtered.length !== all.length;
 
   return (
@@ -284,6 +301,7 @@ function Programs({ result, placeList }: { result: GaaResult; placeList: string 
             </select>
           </label>
         </div>
+        <PlaceFilters places={places} town={town} brgy={brgy} onTown={setTown} onBarangay={(v) => setParam('brgy', v)} />
         {narrowed && (
           <p className="filter-sums">
             {year ? <>{year}: {php(filtered.reduce((a, r) => a + (r.years[String(year)]?.amount ?? 0), 0))} across these {count(filtered.length)}</> : <>{count(filtered.length)} shown</>}
@@ -297,6 +315,7 @@ function Programs({ result, placeList }: { result: GaaResult; placeList: string 
             <div className="tr th" role="row">
               <span role="columnheader">Program or project</span>
               {GAA_YEARS.map((y) => <span role="columnheader" key={y} className={`r${year === y ? ' ycol' : ''}`}>{y}</span>)}
+              <span role="columnheader" className="r">Map</span>
             </div>
             {filtered.slice(0, shown).map((r) => <ProgramRow key={r.key} r={r} year={year} many={(config.scope.places?.length ?? 0) > 1} />)}
           </div>
@@ -337,6 +356,8 @@ function ProgramRow({ r, year, many }: { r: GaaRow; year: number | null; many: b
           </span>
         );
       })}
+      {/* The enacted budgets carry no coordinates; some names have them typed in. */}
+      <span role="cell" className="r td-map" data-label="Map"><MapLink point={pointInText(r.name)} source="as written in the name" /></span>
     </div>
   );
 }
